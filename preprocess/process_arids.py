@@ -15,10 +15,11 @@ path_to_figs = '../figs/'      # figures
 
 task_id = int(os.environ["SLURM_ARRAY_TASK_ID"])
 BATCH_SIZE = 25
+percentile = 95
 
 # Load ARIDs from CSV
 arid_df = pd.read_csv(
-    f"{path_to_out}unique_ARIDs.csv",
+    f"{path_to_out}unique_ARIDs_{percentile}-percentile.csv",
     dtype={"ARID": "int64"}
 )
 
@@ -84,27 +85,38 @@ def get_ar_lifetime(ds, arid, start_time, max_hours=14*24):
     return times.min().values, times.max().values, ds_window.sel(time=times)
 
 def get_ar_trajectory(ds_life, arid):
-    mask = ds_life.kidmap == arid
+    times = ds_life.time.values
 
-    shapemap = ds_life.shapemap.where(mask)
+    clat_list = []
+    clon_list = []
 
-    # IMPORTANT: compute indexers first
-    ids = (
-        shapemap
-        .max(dim=("lat", "lon"), skipna=True)
-        .astype(int)
-        .values - 1
-    )
+    for t in times:
+        tmp = ds_life.sel(time=t)
 
-    clat = ds_life.clat.isel(lat=ids)
-    clon = ds_life.clon.isel(lat=ids)
+        # Find ID for THIS timestep
+        new_id = (
+            tmp.shapemap
+            .where(tmp.kidmap == arid)
+            .max(skipna=True)
+            .compute()
+        )
+
+        if np.isnan(new_id):
+            clat_list.append(np.nan)
+            clon_list.append(np.nan)
+            continue
+
+        idx = int(new_id) - 1
+
+        clat_list.append(tmp.clat.isel(lat=idx).compute().item())
+        clon_list.append(tmp.clon.isel(lat=idx).compute().item())
 
     traj = xr.Dataset(
         data_vars=dict(
-            clat=clat,
-            clon=clon,
+            clat=("time", clat_list),
+            clon=("time", clon_list),
         ),
-        coords=dict(time=ds_life.time)
+        coords=dict(time=times)
     )
 
     return traj
@@ -159,14 +171,14 @@ for arid in ARID_list:
 
 events_df = pd.DataFrame(events)
 events_df.to_csv(
-    f"{path_to_out}/events_task{task_id:03d}.csv",
+    f"{path_to_out}/trajs_{percentile}-percentile/events_task{task_id:03d}.csv",
     index=False
 )
 
 traj_df = pd.concat(trajectories, ignore_index=True)
 
 traj_df.to_parquet(
-    f"{path_to_out}/traj_task{task_id:03d}.parquet"
+    f"{path_to_out}/trajs_{percentile}-percentile/traj_task{task_id:03d}.parquet"
 )
 
 ds.close()

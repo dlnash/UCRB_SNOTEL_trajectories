@@ -1,0 +1,2 @@
+To download the HU2 shapefile from USGS (https://www.usgs.gov/national-hydrography/access-national-hydrography-products):
+```wget https://prd-tnm.s3.amazonaws.com/StagedProducts/Hydrography/WBD/HU2/Shape/WBD_14_HU2_Shape.zip```

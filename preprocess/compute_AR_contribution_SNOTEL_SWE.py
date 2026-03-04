@@ -8,7 +8,7 @@ from preprocess_SNOTEL import get_station, add_wteq_90th_binary
 from download_SNOTEL import readNRCS_by_huc
 
 
-
+percentile = 95 # this is the percentile we are targeting
 start_date = '1990-01-01'
 end_date = '2024-12-31'
 
@@ -72,7 +72,7 @@ water_year = (dense_ds.time.dt.month >= 10) + dense_ds.time.dt.year
 dense_ds.coords['water_year'] = water_year
 
 ## add extreme prec variable
-dense_ds = add_wteq_90th_binary(dense_ds)
+dense_ds = add_wteq_90th_binary(dense_ds, percentile=percentile)
 
 ## Load tARgetv4 AR data
 path_to_data = '/cw3e/mead/projects/cwp162/data/'
@@ -114,15 +114,16 @@ ds_all = xr.Dataset(
     ),
 )
 ds_all.to_netcdf(
-        '../out/UCRB_SNOTEL_tARgetv4_1990-2024.nc',
+        f'../out/UCRB_SNOTEL_tARgetv4_1990-2024_{percentile}-percentile.nc',
         format="NETCDF4")
 
 #######################################################
 ### Create list of unique ARIDs associated with SWE ###
 #######################################################
-
+ds_all = ds_all.compute()
 # Mask invalid AR values
-AR_valid = ds.AR.where(ds.AR >= 0, drop=True)
+idx = (ds_all.AR >= 0) & (ds_all.extreme == 1)
+AR_valid = ds_all.AR.where(idx, drop=True)
 
 # Convert to numpy, flatten, remove NaNs, get unique values
 ARIDs = np.unique(AR_valid.values[~np.isnan(AR_valid.values)])
@@ -131,7 +132,7 @@ ARIDs = np.unique(AR_valid.values[~np.isnan(AR_valid.values)])
 df_ARIDs = pd.DataFrame({"ARID": ARIDs})
 
 # Save to CSV
-df_ARIDs.to_csv("../out/unique_ARIDs.csv", index=False)
+df_ARIDs.to_csv(f"../out/unique_ARIDs_{percentile}-percentile.csv", index=False)
 
 # # Subset to NDJFMA
 # idx = (ds_all.time.dt.month >= 11) | (ds_all.time.dt.month <= 4)
@@ -169,7 +170,7 @@ fraction_df = (
 
 path_to_out = '../out/'
 fraction_df.to_csv(
-    os.path.join(path_to_out, "AR_fraction_extreme_SWE_SNOTEL.csv"),
+    os.path.join(path_to_out, f"AR_fraction_{percentile}-percentile_SWE_SNOTEL.csv"),
     index=False
 )
 
