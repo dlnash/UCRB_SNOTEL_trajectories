@@ -15,7 +15,7 @@ path_to_figs = '../figs/'      # figures
 
 task_id = int(os.environ["SLURM_ARRAY_TASK_ID"])
 BATCH_SIZE = 25
-percentile = 95
+percentile = 0
 
 # Load ARIDs from CSV
 arid_df = pd.read_csv(

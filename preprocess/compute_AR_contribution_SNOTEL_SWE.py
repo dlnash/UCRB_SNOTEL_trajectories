@@ -8,7 +8,7 @@ from preprocess_SNOTEL import get_station, add_wteq_90th_binary
 from download_SNOTEL import readNRCS_by_huc
 
 
-percentile = 95 # this is the percentile we are targeting
+percentile = 0 # this is the percentile we are targeting
 start_date = '1990-01-01'
 end_date = '2024-12-31'
 

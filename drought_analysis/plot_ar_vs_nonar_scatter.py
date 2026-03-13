@@ -126,6 +126,24 @@ def plot_ar_vs_nonar_scatter(
             alpha=0.85,
         )
 
+        # Years to annotate
+        highlight_years = [2003, 2013, 2021]
+        
+        for year in highlight_years:
+            if year in common_years:
+
+                x_pt = panel["x"].loc[year]
+                y_pt = panel["y"].loc[year]
+        
+                ax.annotate(
+                    str(year),
+                    xy=(x_pt, y_pt),
+                    xytext=(4, 4),  # offset so text doesn't sit on marker
+                    textcoords="offset points",
+                    fontsize=9,
+                    weight="bold"
+                )
+
         # 1:1 reference line
         min_val = min(np.min(x), np.min(y))
         max_val = max(np.max(x), np.max(y))
