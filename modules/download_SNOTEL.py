@@ -81,6 +81,7 @@ def fetch_wteq_station_data(
         "duration": duration,
         "beginDate": begin_date,
         "endDate": end_date,
+        "centralTendencyType": "MEDIAN",
         "returnFlags": "false",
         "returnOriginalValues": "false",
         "returnSuspectData": "false",
@@ -92,25 +93,45 @@ def fetch_wteq_station_data(
 
     data = r.json()
 
+    # ---------------------------
+    # 1. Time series values
+    # ---------------------------
     try:
         values = data[0]["data"][0]["values"]
     except (KeyError, IndexError):
-        return pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame()
 
     df = pd.DataFrame(values)
 
     if df.empty:
-        return df
+        return df, pd.DataFrame()
 
     df["date"] = pd.to_datetime(df["date"])
-    df = df.rename(columns={"value": element.lower()})
     df["site_id"] = site_id
-    df["wteq_mm"] = df["wteq"] * 25.4
 
+    # convert SWE (in → mm)
+    df["wteq_mm"] = df["value"] * 25.4
+
+    # ---------------------------
+    # 2. Median WY peak metadata
+    # ---------------------------
+    try:
+        peak_in = data[0]["data"][0]["timingCentralTendencies"]["medianPeak"]["value"]
+    except (KeyError, IndexError, TypeError):
+        peak_in = np.nan
+
+    peak_df = pd.DataFrame({
+        "site_id": [site_id],
+        "wy_peak_median_mm": [peak_in * 25.4 if pd.notna(peak_in) else np.nan]
+    })
+
+    # ---------------------------
+    # 3. Optional save
+    # ---------------------------
     if out_csv:
         df.to_csv(out_csv, index=False)
 
-    return df
+    return df, peak_df
 
 def fetch_wteq_for_dataframe(
     df,
@@ -127,28 +148,31 @@ def fetch_wteq_for_dataframe(
     """
 
     df_lst = []
+    peak_lst = []
     for site_id in df["site_id"]:
 
         try:
             print(f"Fetching {site_id}...")
-            df = fetch_wteq_station_data(
+            df, peak_df = fetch_wteq_station_data(
                  site_id=site_id,
                  element=element,
                  duration=duration,
                  out_csv=None
              )
             df_lst.append(df)
+            peak_lst.append(peak_df)
 
         except Exception as e:
             print(f"⚠️  Failed for {site_id}: {e}")
 
-    return df_lst
-
-def stations_to_netcdf(df_meta, df_data_list, out_nc):
+    return df_lst, peak_lst
+    
+def stations_to_netcdf(df_meta, df_data_list, peak_df_all, out_nc):
     """
     Create a CF-style ragged NetCDF for SNOTEL SWE with daily SWE rate (mm/day).
     """
-
+    df_meta = df_meta.merge(peak_df_all, on="site_id", how="left")
+    
     station_ids = df_meta["site_id"].values
     station_lookup = {sid: i for i, sid in enumerate(station_ids)}
 
@@ -158,6 +182,8 @@ def stations_to_netcdf(df_meta, df_data_list, out_nc):
     station_index = []
 
     for df in df_data_list:
+        if df.empty:
+            continue
         sid = df["site_id"].iloc[0]
         idx = station_lookup[sid]
 
@@ -170,7 +196,10 @@ def stations_to_netcdf(df_meta, df_data_list, out_nc):
         rate = np.diff(swe, prepend=np.nan)
 
         # Reset rate at water-year boundaries (Oct 1)
-        wy = np.where((time_vals.month == 10) & (time_vals.day == 1))[0]
+        wy = np.where(
+            (pd.DatetimeIndex(time_vals).month == 10) &
+            (pd.DatetimeIndex(time_vals).day == 1)
+        )[0]
         rate[wy] = np.nan
 
         times.append(time_vals)
@@ -202,7 +231,20 @@ def stations_to_netcdf(df_meta, df_data_list, out_nc):
         "latitude": ("station", df_meta["latitude"].values),
         "longitude": ("station", df_meta["longitude"].values),
         "elevation": ("station", df_meta["elevation"].values),
+        "wy_peak_median": ("station", df_meta["wy_peak_median_mm"].values)
     })
+
+    print(ds)
+    print(np.nanmin(ds.wy_peak_median.values), np.nanmax(ds.wy_peak_median.values))
+
+    # compute SWE as a fraction of median peak
+    ds["wteq_pct_of_median_peak"] = (
+    ds["wteq"] / ds["wy_peak_median"][ds["station_index"]]
+)
+    # compute normalized accumulation rate
+    ds["wteq_rate_norm"] = (
+    ds["wteq_rate"] / ds["wy_peak_median"][ds["station_index"]]
+)
 
     # Attributes
     ds["wteq"].attrs.update({
@@ -216,6 +258,23 @@ def stations_to_netcdf(df_meta, df_data_list, out_nc):
         "units": "mm day-1",
         "description": "Difference in SWE between consecutive days; positive indicates accumulation, negative melt"
     })
+
+    ds["wy_peak_median"].attrs.update({
+    "long_name": "Median water year peak SWE (1991-2020)",
+    "units": "mm",
+    "description": "Median of annual maximum SWE (WTEQ) for water years 1991–2020"
+    })
+
+    ds["wteq_pct_of_median_peak"].attrs.update({
+    "long_name": "SWE as fraction of median water year peak",
+    "units": "1",
+    "description": "Ratio of SWE to 1991–2020 median water year peak SWE"
+})
+    ds["wteq_rate_norm"].attrs.update({
+    "long_name": "Normalized SWE change rate",
+    "units": "day-1",
+    "description": "Daily SWE change normalized by median water year peak SWE"
+})
 
     ds["time"].attrs["standard_name"] = "time"
     ds["station"].attrs["cf_role"] = "timeseries_id"

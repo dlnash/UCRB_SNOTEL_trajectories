@@ -12,7 +12,34 @@ def add_water_year(df, date_col="MapDate"):
 
 
 # ---------------- Drought Processing ---------------- #
+def calculate_drought_breaks(df):
 
+    # Boolean flags
+    df['below_thresh'] = df['D2_D4_mean'] < 30.
+    df['above_thresh'] = df['D2_D4_mean'] >= 30.
+    
+    # Identify transitions from drought → non-drought
+    df['transition'] = (df['above_thresh'].shift(1) == True) & (df['below_thresh'] == True)
+    
+    # Find all candidate break indices
+    candidate_idx = df.index[df['transition']].tolist()
+    
+    # Confirm persistence ≥ 6 months
+    drought_breaks = []
+    
+    for idx in candidate_idx:
+        # Look forward 6 months (including current)
+        window = df.loc[idx: idx+5, 'below_thresh']
+        # print(window)
+        
+        if len(window) == 6 and window.all():
+            drought_breaks.append(idx)
+    
+    # Extract event dataframe
+    df_breaks = df.loc[drought_breaks].copy()
+
+    return df_breaks
+    
 def process_drought(df):
     """
     Processes drought metrics and returns:
@@ -71,7 +98,17 @@ def process_drought(df):
         wy_start_end["D2_end"] - wy_start_end["D2_start"]
     ).rename("D2_change")
 
-    return drought_wy, drought_melt, drought_diff
+    # -------------------------------------------------
+    # 4) Monthly Mean Drought and Drought Breaks
+    # -------------------------------------------------
+    month_df = df.groupby(pd.PeriodIndex(df['MapDate'], freq="M"))['D2_D4_total'].mean()
+    month_df = month_df.to_frame(name="D2_D4_mean").reset_index()
+    month_df['MapDate'] = month_df['MapDate'].dt.to_timestamp()
+    drought_month = month_df
+    drought_breaks = calculate_drought_breaks(month_df)
+
+    
+    return drought_wy, drought_melt, drought_diff, drought_month, drought_breaks
 
 
 # ---------------- SWE Processing ---------------- #
@@ -86,6 +123,14 @@ def normalize_swe(ds):
     climatology = annual.mean(dim="water_year")
 
     return SWE / climatology
+
+def subset_swe_percent_of_median_peak(ds):
+
+    snow_mask = ds["time"].dt.month.isin(SNOW_MONTHS)
+    SWE = ds["SWE_norm"].where(ds["SWE_norm"] > 0)
+    SWE = SWE.where(snow_mask)
+
+    return SWE
 
 
 def compute_swe_categories(ds, SWE_norm):

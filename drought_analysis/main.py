@@ -1,3 +1,9 @@
+"""
+Filename:    main.py
+Author:      Deanna Nash, dnash@ucsd.edu
+Description: File to run all the drought metric figures
+To run:  python main.py --scatter --save --stats
+"""
 # main.py
 
 import argparse
@@ -6,12 +12,12 @@ import pandas as pd
 from data_loader import load_drought_data, load_swe_data
 from processing import (
     process_drought,
-    normalize_swe,
+    subset_swe_percent_of_median_peak,
     compute_swe_categories,
 )
 from stats_utils import build_stats_table
-from plot_stacked_swe import plot_stacked
-from plot_correlations import plot_panel
+from plot_stacked_swe import plot_stacked, plot_stacked_drought_below
+from plot_correlations import plot_panel, plot_single_panel_progressive
 from plot_ar_vs_nonar_scatter import plot_ar_vs_nonar_scatter
 
 import matplotlib.pyplot as plt
@@ -32,10 +38,11 @@ def run_analysis(make_stacked=True,
     ds = load_swe_data()
 
     print("Processing drought metrics...")
-    drought_wy, drought_melt, drought_diff = process_drought(drought_df)
+    drought_wy, drought_melt, drought_diff, drought_month, drought_breaks = process_drought(drought_df)
 
     print("Processing SWE...")
-    SWE_norm = normalize_swe(ds)
+    # SWE_norm = normalize_swe(ds)
+    SWE_norm = subset_swe_percent_of_median_peak(ds)
     swe_categories = compute_swe_categories(ds, SWE_norm)
 
     # Convert SWE dict to pandas DataFrame
@@ -61,33 +68,29 @@ def run_analysis(make_stacked=True,
         if save_figures:
             fig.savefig("figs/stacked_swe.png", dpi=300)
 
+        print("Creating stacked SWE plot with drought below...")
+        fig = plot_stacked_drought_below(swe_df, drought_month, drought_breaks)
+
+        if save_figures:
+            fig.savefig("figs/stacked_swe_drought_below.png", dpi=300)
+
         plt.show()
         
     # -------------------------------
     # AR vs. non-AR scatter plot
     # -------------------------------
     if make_scatter:
-        drought_dict = {
-            "Same-Year Drought": drought_wy,
-            "Lagged Melt-Season Drought": drought_melt,
-            "Drought Difference": drought_diff
-        }
-
-        for drought_name, drought_vals in drought_dict.items():
-            if "Difference" in drought_name:
-                cmap = "BrBG_r"
-            else:
-                cmap = "viridis"
-        
-            print("Creating AR vs Non-AR scatter plot...")
-            fig = plot_ar_vs_nonar_scatter(
-                swe_df,
-                drought_vals,
-                drought_name,
-                cmap=cmap,
-                save_path="figs/ar_vs_nonar_scatter_" + drought_name.replace(" ", "_") + ".png" if save_figures else None
-            )
-            plt.show()
+        print("Creating AR vs Non-AR scatter plot...")
+        drought_name ="Drought Difference"
+        fig = plot_ar_vs_nonar_scatter(
+            swe_df,
+            drought_wy,
+            drought_diff,
+            drought_name,
+            cmap="BrBG_r",
+            save_path="figs/ar_vs_nonar_scatter_" + drought_name.replace(" ", "_") + ".png" if save_figures else None
+        )
+        plt.show()
 
     # -------------------------------
     # Correlation Panels
@@ -114,8 +117,16 @@ def run_analysis(make_stacked=True,
             "Lagged Melt-Season Drought": drought_melt.values,
             "Drought Difference": drought_diff.values
         }
-
+        print(drought_melt)
+        print(swe_df)
         for drought_name, drought_vals in drought_dict.items():
+            print(drought_name)
+            plot_single_panel_progressive(
+                swe_df,
+                drought_vals,
+                drought_name,
+                save_figures=save_figures
+            )
 
             fig, axes = plt.subplots(2, 2, figsize=(12, 10))
             axes = axes.flatten()

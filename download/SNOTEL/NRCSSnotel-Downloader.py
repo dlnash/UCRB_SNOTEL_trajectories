@@ -15,16 +15,17 @@ from download_SNOTEL import readNRCS_by_huc, fetch_wteq_for_dataframe, stations_
 ## get list of station metadata for stations in the HUC2 = 14
 HUC = "14"
 df_meta = readNRCS_by_huc(HUC)
-df_meta = df_meta.set_index(pd.to_datetime(df_meta['beginDate']))
-## limit to stations that have data starting in 1990 or earlier
-idx = (df_meta.index <= '1990-01-01')
-df_meta = df_meta.loc[idx]
 
 ## fetch the data from the databases and save as .csv
-df_data_list = fetch_wteq_for_dataframe(
+df_data_list, peak_lst = fetch_wteq_for_dataframe(
                 df_meta,
                 element="WTEQ",
                 duration="DAILY"
             )
 
-stations_to_netcdf(df_meta, df_data_list, '../../data/UCRB_SNOTEL_SWE_data.nc')
+peak_df_all = (
+    pd.concat(peak_lst, ignore_index=True)
+    .drop_duplicates(subset="site_id")
+)
+
+stations_to_netcdf(df_meta, df_data_list, peak_df_all, out_nc='../../data/UCRB_SNOTEL_SWE_data_with_median_peak.nc')

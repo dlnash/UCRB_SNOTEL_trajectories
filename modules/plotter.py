@@ -25,6 +25,7 @@ import matplotlib.animation as animation
 import pandas as pd
 import matplotlib.gridspec as gridspec
 import seaborn as sns
+from matplotlib import font_manager as fm
 ## import personal modules
 import globalvars
 

@@ -3,10 +3,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
-
+import matplotlib.patheffects as path_effects
 
 def plot_ar_vs_nonar_scatter(
     swe_df,
+    mean_drought_vals,
     drought_vals,
     drought_name,
     cmap="viridis",
@@ -20,11 +21,13 @@ def plot_ar_vs_nonar_scatter(
         3) Total AR vs Total non-AR
         4) All Extreme vs All Non-Extreme
 
-    Color = drought metric (D2+ %)
+    Color = drought difference (end of WY - start of WY) (positive value indicates increase in drought severity)
+
+    Size = average drought % during the WY
     """
 
     # -------------------------------------------------
-    # Build precipitation categories
+    # Build SWE categories
     # -------------------------------------------------
 
     extreme_AR = swe_df["extreme AR"]
@@ -44,29 +47,29 @@ def plot_ar_vs_nonar_scatter(
             "title": "Extreme (AR vs Non-AR)",
             "x": extreme_AR,
             "y": extreme_nonAR,
-            "xlabel": "Extreme AR Precipitation (Oct–Mar)",
-            "ylabel": "Extreme Non-AR Precipitation (Oct–Mar)",
+            "xlabel": "Extreme AR SWE (Oct–Mar)",
+            "ylabel": "Extreme Non-AR SWE (Oct–Mar)",
         },
         {
             "title": "Non-Extreme (AR vs Non-AR)",
             "x": nonextreme_AR,
             "y": nonextreme_nonAR,
-            "xlabel": "Non-Extreme AR Precipitation (Oct–Mar)",
-            "ylabel": "Non-Extreme Non-AR Precipitation (Oct–Mar)",
+            "xlabel": "Non-Extreme AR SWE (Oct–Mar)",
+            "ylabel": "Non-Extreme Non-AR SWE (Oct–Mar)",
         },
         {
             "title": "Total (AR vs Non-AR)",
             "x": total_AR,
             "y": total_nonAR,
-            "xlabel": "Total AR Precipitation (Oct–Mar)",
-            "ylabel": "Total Non-AR Precipitation (Oct–Mar)",
+            "xlabel": "Total AR SWE (Oct–Mar)",
+            "ylabel": "Total Non-AR SWE (Oct–Mar)",
         },
         {
             "title": "All Extreme vs Non-Extreme",
             "x": all_extreme,
             "y": all_nonextreme,
-            "xlabel": "All Extreme Precipitation (Oct–Mar)",
-            "ylabel": "All Non-Extreme Precipitation (Oct–Mar)",
+            "xlabel": "All Extreme SWE (Oct–Mar)",
+            "ylabel": "All Non-Extreme SWE (Oct–Mar)",
         },
     ]
 
@@ -77,6 +80,7 @@ def plot_ar_vs_nonar_scatter(
     common_years = swe_df.index.intersection(drought_vals.index)
     swe_df = swe_df.loc[common_years]
     drought_vals = drought_vals.loc[common_years]
+    mean_drought_vals = mean_drought_vals.loc[common_years]
     
     vmin = drought_vals.min()
     vmax = drought_vals.max()
@@ -85,24 +89,24 @@ def plot_ar_vs_nonar_scatter(
     # Create 2x2 GridSpec + colorbar column
     # -------------------------------------------------
 
-    fig = plt.figure(figsize=(12, 10))
+    fig = plt.figure(figsize=(11,9.5))
 
     gs = GridSpec(
         nrows=2,
         ncols=3,
-        width_ratios=[1, 1, 0.05],
-        wspace=0.2,
+        width_ratios=[1.05, 1, 0.05],
+        wspace=0.1,
         hspace=0.2
     )
 
     axes = [
-        fig.add_subplot(gs[0, 0]),
         fig.add_subplot(gs[0, 1]),
+        fig.add_subplot(gs[0, 0]),
         fig.add_subplot(gs[1, 0]),
         fig.add_subplot(gs[1, 1]),
     ]
 
-    cax = fig.add_subplot(gs[:, 2])
+    cax = fig.add_subplot(gs[0, 2])
 
     # -------------------------------------------------
     # Plot Panels
@@ -113,6 +117,7 @@ def plot_ar_vs_nonar_scatter(
         x = panel["x"].loc[common_years].values
         y = panel["y"].loc[common_years].values
         c = drought_vals.values
+        s = mean_drought_vals.values
 
         sc = ax.scatter(
             x,
@@ -121,13 +126,25 @@ def plot_ar_vs_nonar_scatter(
             cmap=cmap,
             vmin=vmin,
             vmax=vmax,
-            s=80,
-            edgecolor="k",
-            alpha=0.85,
+            s=s*15,
+            edgecolor='black',
+            alpha=0.75,
         )
 
-        # Years to annotate
-        highlight_years = [2003, 2013, 2021]
+        # Highlight years with red outlines
+        highlight_years = [2005, 2008, 2013, 2015, 2019, 2023]
+        
+        highlight_mask = np.isin(common_years, highlight_years)
+        
+        ax.scatter(
+            x[highlight_mask],
+            y[highlight_mask],
+            facecolors='none',     # hollow circle
+            edgecolors='red',      # red outline
+            s=s[highlight_mask]*16,  # slightly larger than base points
+            linewidths=1.5,
+            zorder=3               # draw on top
+        )
         
         for year in highlight_years:
             if year in common_years:
@@ -135,14 +152,15 @@ def plot_ar_vs_nonar_scatter(
                 x_pt = panel["x"].loc[year]
                 y_pt = panel["y"].loc[year]
         
-                ax.annotate(
-                    str(year),
+                ann = ax.annotate(
+                    str(year)[2:],
                     xy=(x_pt, y_pt),
-                    xytext=(4, 4),  # offset so text doesn't sit on marker
+                    xytext=(-6, -3),  # offset text
                     textcoords="offset points",
                     fontsize=9,
                     weight="bold"
                 )
+                ann.set_path_effects([path_effects.withStroke(linewidth=1, foreground="white")])
 
         # 1:1 reference line
         min_val = min(np.min(x), np.min(y))
@@ -176,7 +194,7 @@ def plot_ar_vs_nonar_scatter(
     # -------------------------------------------------
 
     fig.suptitle(
-        f"Oct–March Precipitation Partitioning and {drought_name} Response",
+        f"Oct–March SWE and {drought_name}",
         fontsize=16
     )
 

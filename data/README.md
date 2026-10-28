@@ -1,0 +1,2 @@
+To download the NOAA PDSI data: `wget https://www.ncei.noaa.gov/pub/data/cirs/climdiv/climdiv-pdsist-v1.0.0-20260305`
+Data information found at https://www.ncei.noaa.gov/pub/data/cirs/climdiv/drought-readme.txt
